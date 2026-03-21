@@ -668,20 +668,39 @@ renderCards();
   // Load links from Firestore
   window.loadLinksFromFirebase = async function(){
     try {
+      console.log("📥 Attempting to load links from Firestore...");
       const linksRef = collection(db, 'links');
       const q = query(linksRef, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       
+      console.log(`📊 Firestore returned ${snapshot.size} documents`);
+      
       if(snapshot.empty) {
-        console.log("ℹ️  No links in Firestore yet");
+        console.log("ℹ️  No links in Firestore yet - using default links");
+        renderCards();
         return;
       }
       
-      window.links = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      window.links = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: data.id || doc.id, 
+          cat: data.cat, 
+          name: data.name, 
+          url: data.url, 
+          bonus: data.bonus || '', 
+          desc: data.desc || '', 
+          author: data.author, 
+          votes: data.votes || 0, 
+          clicks: data.clicks || 0 
+        };
+      });
       renderCards();
       console.log(`✅ Loaded ${window.links.length} links from Firestore`);
     } catch(err) {
-      console.error('❌ Error loading links:', err);
+      console.error('❌ Error loading links from Firestore:', err.message);
+      console.error('📋 Full error:', err);
+      renderCards(); // Fall back to default links
     }
   };
 
