@@ -576,13 +576,30 @@ function updateStats(){
   document.getElementById('totalVotes').textContent=tv;
 }
 
-function filterCards(cat,btn){ activeFilter=cat; document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderCards(); }
+function filterCards(cat,btn){ 
+  activeFilter=cat; 
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active')); 
+  btn.classList.add('active'); 
+  
+  // Track filter usage
+  if(window.trackFilter) {
+    window.trackFilter(cat);
+  }
+  
+  renderCards(); 
+}
 function searchCards(val){ searchQuery=val; renderCards(); }
 
 function vote(id,btn){
   const l=links.find(x=>x.id===id); if(!l) return;
   if(votedIds.has(id)){ votedIds.delete(id); l.votes--; btn.classList.remove('voted'); }
-  else { votedIds.add(id); l.votes++; btn.classList.add('voted'); showToast('▲ VOTE ENREGISTRÉ !'); }
+  else { votedIds.add(id); l.votes++; btn.classList.add('voted'); 
+    // Track vote in Firebase Analytics
+    if(window.trackVote) {
+      window.trackVote(l.name, l.votes);
+    }
+    showToast('▲ VOTE ENREGISTRÉ !'); 
+  }
   btn.innerHTML=`▲ ${l.votes}`;
 }
 
@@ -592,6 +609,12 @@ function copyLink(id,btn){
     btn.classList.add('copied');
     btn.innerHTML=`<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>COPIÉ !`;
     l.clicks++;
+    
+    // Track the click in Firebase Analytics
+    if(window.trackLinkClick) {
+      window.trackLinkClick(l.name, l.url);
+    }
+    
     setTimeout(()=>{ btn.classList.remove('copied'); btn.innerHTML=`<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>COPIER`; renderCards(); },2000);
   });
   showToast('📋 LIEN COPIÉ !');
@@ -642,6 +665,7 @@ renderCards();
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getFirestore, collection, getDocs, addDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
   import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getAnalytics, logEvent } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
 
   // Firebase Configuration
   const firebaseConfig = {
@@ -658,12 +682,22 @@ renderCards();
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const auth = getAuth(app);
+  const analytics = getAnalytics(app);
 
   // Make Firebase available globally
   window.firebaseDB = db;
   window.firebaseAuth = auth;
+  window.firebaseAnalytics = analytics;
 
   console.log("✅ Firebase initialized with dadonref project");
+  console.log("📊 Google Analytics enabled");
+
+  // Track page visit
+  logEvent(analytics, 'page_view', {
+    page_title: 'MyCloudRef - Referral Hub',
+    page_location: window.location.href,
+    timestamp: new Date().toISOString()
+  });
 
   // Load links from Firestore
   window.loadLinksFromFirebase = async function(){
@@ -712,10 +746,45 @@ renderCards();
         ...link,
         createdAt: new Date()
       });
+      
+      // Track link submission event
+      logEvent(analytics, 'link_submitted', {
+        link_name: link.name,
+        link_category: link.cat,
+        author: link.author
+      });
+      
       console.log('✅ Link saved to Firestore');
     } catch(err) {
       console.error('❌ Error saving link:', err);
     }
+  };
+
+  // Track link clicks
+  window.trackLinkClick = function(linkName, linkUrl){
+    logEvent(analytics, 'link_clicked', {
+      link_name: linkName,
+      link_url: linkUrl,
+      timestamp: new Date().toISOString()
+    });
+    console.log(`📊 Tracked click: ${linkName}`);
+  };
+
+  // Track vote events
+  window.trackVote = function(linkName, voteCount){
+    logEvent(analytics, 'link_voted', {
+      link_name: linkName,
+      vote_count: voteCount,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  // Track filter usage
+  window.trackFilter = function(filterCategory){
+    logEvent(analytics, 'filter_used', {
+      category: filterCategory,
+      timestamp: new Date().toISOString()
+    });
   };
 
   // Load links on startup
